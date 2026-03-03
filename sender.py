@@ -4,6 +4,7 @@ from email.mime.multipart import MIMEMultipart
 import pandas as pd
 import os
 import time
+import socket
 import logging
 from datetime import datetime
 from jinja2 import Environment, FileSystemLoader, Template
@@ -79,10 +80,19 @@ class BulkEmailSender:
         email_address = recipient.get('email')
         
         try:
-            # Disconnect and Reconnect per-email ensures we can safely rotate accounts dynamically
-            server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+            # 🔍 FIX: Force IPv4 to bypass 'Network is unreachable' on cloud environments
+            try:
+                # Resolve hostname to IPv4 specifically
+                addr_info = socket.getaddrinfo(self.smtp_host, self.smtp_port, socket.AF_INET, socket.SOCK_STREAM)
+                target_ip = addr_info[0][4][0]
+                logger.info(f"Connecting to SMTP {self.smtp_host} [{target_ip}:{self.smtp_port}]...")
+                server = smtplib.SMTP(target_ip, self.smtp_port, timeout=30)
+            except Exception as resolve_err:
+                logger.warning(f"IPv4 force resolution failed, falling back to DNS: {resolve_err}")
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30)
+
             server.ehlo()
-            server.starttls()
+            server.starttls(server_hostname=self.smtp_host)
             server.ehlo()
             server.login(smtp_user, smtp_pass)
 

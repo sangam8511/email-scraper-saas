@@ -122,7 +122,6 @@
 
     {#if toastMsg}
         <div
-            fixed
             in:fly={{ y: -20 }}
             out:fade
             class="fixed top-6 right-6 px-6 py-3.5 rounded-2xl border {toastErr

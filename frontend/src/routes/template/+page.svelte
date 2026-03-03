@@ -138,7 +138,6 @@
 
     {#if toastMsg}
         <div
-            fixed
             in:fly={{ y: -20 }}
             out:fade
             class="fixed top-6 right-6 px-6 py-3.5 rounded-2xl border border-emerald-500 bg-emerald-500/10 text-emerald-400 backdrop-blur-2xl z-[100] shadow-2xl flex items-center gap-3"
