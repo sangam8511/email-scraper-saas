@@ -80,20 +80,44 @@ class BulkEmailSender:
         email_address = recipient.get('email')
         
         try:
-            # 🔍 FIX: Force IPv4 to bypass 'Network is unreachable' on cloud environments
-            try:
-                # Resolve hostname to IPv4 specifically
-                addr_info = socket.getaddrinfo(self.smtp_host, self.smtp_port, socket.AF_INET, socket.SOCK_STREAM)
-                target_ip = addr_info[0][4][0]
-                logger.info(f"Connecting to SMTP {self.smtp_host} [{target_ip}:{self.smtp_port}]...")
-                server = smtplib.SMTP(target_ip, self.smtp_port, timeout=30)
-            except Exception as resolve_err:
-                logger.warning(f"IPv4 force resolution failed, falling back to DNS: {resolve_err}")
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30)
+            # 🔍 PROACTIVE FIX: Dual-Port Strategy (465/587) + DNS Resilience
+            server = None
+            connection_errors = []
 
-            server.ehlo()
-            server.starttls(server_hostname=self.smtp_host)
-            server.ehlo()
+            # Potential connection targets
+            connection_strategies = [
+                (self.smtp_host, 465, "SSL"),
+                (self.smtp_host, 587, "STARTTLS"),
+            ]
+            
+            # If resolution is timing out, add static IP fallbacks for Gmail specifically
+            if "gmail.com" in self.smtp_host.lower():
+                connection_strategies.append(("142.251.2.108", 465, "SSL-DIRECT"))
+                connection_strategies.append(("142.251.2.108", 587, "STARTTLS-DIRECT"))
+
+            for host, port, mode in connection_strategies:
+                try:
+                    logger.info(f"Connecting to {host}:{port} via {mode}...")
+                    if "SSL" in mode:
+                        server = smtplib.SMTP_SSL(host, port, timeout=25)
+                    else:
+                        server = smtplib.SMTP(host, port, timeout=25)
+                        server.ehlo()
+                        server.starttls(server_hostname=self.smtp_host)
+                        server.ehlo()
+                    
+                    # If we reached here, connection is established
+                    break 
+                except Exception as e:
+                    connection_errors.append(f"{mode}({host}): {str(e)}")
+                    if server:
+                        try: server.quit() 
+                        except: pass
+                    server = None
+
+            if not server:
+                raise Exception(f"All SMTP strategies failed: {'; '.join(connection_errors)}")
+
             server.login(smtp_user, smtp_pass)
 
             # 2) Parse the full name to just get the first name
