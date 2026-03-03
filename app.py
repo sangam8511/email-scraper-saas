@@ -7,6 +7,10 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from sender import BulkEmailSender
 from scraper import LeadScraper
+from dotenv import load_dotenv
+from models import db, User, EmailAccount, Campaign, Lead
+
+load_dotenv()
 
 # Ensure logs and recipients directory exists
 os.makedirs('logs', exist_ok=True)
@@ -28,7 +32,20 @@ logger = logging.getLogger(__name__)
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 app = Flask(__name__, static_folder='static')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)
+
+with app.app_context():
+    # Attempt to create tables if they don't exist
+    try:
+        db.create_all()
+        logger.info("Database tables verified/created successfully.")
+    except Exception as e:
+        logger.error(f"Failed to create database tables: {e}")
 
 # Application state
 engine_state = {
@@ -71,113 +88,130 @@ us_cities = [
 ]
 
 def load_sent_emails():
-    sent_emails = set()
-    if os.path.exists('logs/sent_emails.txt'):
-        with open('logs/sent_emails.txt', 'r') as f:
-            for line in f:
-                if line.strip():
-                    sent_emails.add(line.strip().split(',')[0].strip().lower())
-    return sent_emails
+    # Deprecated fallback - now handled inside bg workers via DB
+    return set()
 
-def bg_email_worker(sender, delay_seconds):
+def bg_email_worker(delay_seconds):
     """Takes emails from queue and sends them."""
     global engine_state
-    while not stop_event.is_set() or not email_queue.empty():
-        try:
-            # We timeout every 2 seconds to check the stop_event
-            contact = email_queue.get(timeout=2)
-            if contact is None:
-                break
-                
-            logger.info(f"🚀 Engaging {contact.get('email')} ({contact.get('name_full')})...")
+    
+    with app.app_context():
+        user = get_default_user()
+        camp = get_default_campaign(user.id)
+        sender = BulkEmailSender(user, camp)
+        
+        while not stop_event.is_set() or not email_queue.empty():
             try:
-                # the sender logic sends sync
-                sender.send_emails([contact], delay_seconds=0)
-                engine_state['emails_sent'] += 1
-                logger.info(f"Waiting {delay_seconds} seconds before grabbing the next email from queue to avoid spam filters...")
-                
-                # Sleep in increments so we can interrupt if stopped
-                for _ in range(delay_seconds):
-                    if stop_event.is_set():
-                        break
-                    time.sleep(1)
+                # We timeout every 2 seconds to check the stop_event
+                contact_dict = email_queue.get(timeout=2)
+                if contact_dict is None:
+                    break
                     
-            except Exception as e:
-                logger.error(f"[Background Sender] failed on {contact.get('email')}: {e}")
-                engine_state['errors'] += 1
-            finally:
-                email_queue.task_done()
-        except Exception:
-            # Empty queue timeout
-            pass
+                logger.info(f"🚀 Engaging {contact_dict.get('email')} ({contact_dict.get('name_full')})...")
+                try:
+                    success, sender_email = sender.send_single_email(contact_dict)
+                    if success:
+                        engine_state['emails_sent'] += 1
+                        
+                        # Update lead in DB
+                        from datetime import datetime
+                        lead = Lead.query.filter_by(campaign_id=camp.id, email=contact_dict['email']).first()
+                        if lead:
+                            lead.sent_at = datetime.utcnow()
+                            db.session.commit()
+                            
+                        logger.info(f"Waiting {delay_seconds} seconds before grabbing the next email from queue to avoid spam filters...")
+                        for _ in range(delay_seconds):
+                            if stop_event.is_set():
+                                break
+                            time.sleep(1)
+                    else:
+                        engine_state['errors'] += 1
+                except Exception as e:
+                    logger.error(f"[Background Sender] failed on {contact_dict.get('email')}: {e}")
+                    engine_state['errors'] += 1
+                finally:
+                    email_queue.task_done()
+            except Exception:
+                # Empty queue timeout
+                pass
 
 def bg_scraper_worker(niche):
     """Iterates through cities and scrapes."""
     global engine_state
-    try:
-        sender = BulkEmailSender()
-        logger.info(f"Loaded {len(sender.accounts)} sending accounts.")
-        sent_emails = load_sent_emails()
-        scraper = LeadScraper()
-        
-        for city in us_cities:
-            if stop_event.is_set():
-                break
-                
-            engine_state['current_city'] = city
-            query = f"{niche} in {city}"
-            logger.info(f"=============================================")
-            logger.info(f"📍 Now searching: {query}")
-            logger.info(f"=============================================")
+    
+    with app.app_context():
+        try:
+            user = get_default_user()
+            camp = get_default_campaign(user.id)
             
-            for lead in scraper.scrape_leads_generator(query, num_results=20):
+            # Fetch sent emails from DB for this campaign so we don't scrape and queue them again
+            sent_leads = Lead.query.filter(Lead.campaign_id == camp.id, Lead.sent_at != None).all()
+            sent_emails = set([l.email.lower() for l in sent_leads])
+            
+            scraper = LeadScraper()
+            
+            for city in us_cities:
                 if stop_event.is_set():
                     break
                     
-                if 'Skipped Count' in lead and lead['Skipped Count'] > 0:
-                    engine_state['emails_skipped'] += lead['Skipped Count']
-                    
-                if not lead['Emails']:
-                    continue
-                    
-                emails_list = [e.strip() for e in lead['Emails'].split(',')]
-                valid_emails = [e for e in emails_list if e.lower() not in sent_emails]
+                engine_state['current_city'] = city
+                query = f"{niche} in {city}"
+                logger.info(f"=============================================")
+                logger.info(f"📍 Now searching: {query}")
+                logger.info(f"=============================================")
                 
-                for email_address in valid_emails:
-                    contact = {
-                        'email': email_address,
-                        'name_full': lead['Business Name'],
-                        'city': lead['Search location'],
-                        'address': '',
-                        'niche': niche
-                    }
-                    
-                    email_queue.put(contact)
-                    sent_emails.add(email_address.lower())
-                    engine_state['emails_found'] += 1
-                    
-                    # Save to CSV
-                    try:
-                        csv_file = 'recipients/contacts.csv'
-                        file_exists = os.path.isfile(csv_file)
-                        with open(csv_file, 'a') as f:
-                            if not file_exists or os.stat(csv_file).st_size == 0:
-                                f.write("Business Name,Emails,Website,Search location\n")
-                            safe_name = contact['name_full'].replace('"', '""')
-                            safe_location = contact['city'].replace('"', '""')
-                            f.write(f'"{safe_name}",{email_address},{lead["Website"]},"{safe_location}"\n')
-                    except Exception as e:
-                        logger.error(f"Failed to append to contacts.csv: {e}")
+                for lead_data in scraper.scrape_leads_generator(query, num_results=20):
+                    if stop_event.is_set():
+                        break
                         
-        logger.info("Finished searching all cities. Waiting for email queue to complete...")
-        while not email_queue.empty() and not stop_event.is_set():
-            time.sleep(1)
-            
-        engine_state['is_running'] = False
-        logger.info("Campaign completed naturally.")
-    except Exception as e:
-        logger.error(f"Error in bg_scraper_worker: {e}")
-        engine_state['is_running'] = False
+                    if 'Skipped Count' in lead_data and lead_data['Skipped Count'] > 0:
+                        engine_state['emails_skipped'] += lead_data['Skipped Count']
+                        
+                    if not lead_data.get('Emails'):
+                        continue
+                        
+                    emails_list = [e.strip() for e in lead_data['Emails'].split(',')]
+                    valid_emails = [e for e in emails_list if e.lower() not in sent_emails]
+                    
+                    for email_address in valid_emails:
+                        # Add to Database ONLY if it doesn't already exist
+                        existing_lead = Lead.query.filter_by(campaign_id=camp.id, email=email_address).first()
+                        if not existing_lead:
+                            new_lead = Lead(
+                                campaign_id=camp.id,
+                                name_full=lead_data.get('Business Name', ''),
+                                email=email_address,
+                                website=lead_data.get('Website', ''),
+                                city=lead_data.get('Search location', '')
+                            )
+                            db.session.add(new_lead)
+                            try:
+                                db.session.commit()
+                            except:
+                                db.session.rollback()
+                        
+                        contact_dict = {
+                            'email': email_address,
+                            'name_full': lead_data.get('Business Name', ''),
+                            'city': lead_data.get('Search location', ''),
+                            'address': lead_data.get('Address', ''),
+                            'niche': niche
+                        }
+                        
+                        email_queue.put(contact_dict)
+                        sent_emails.add(email_address.lower())
+                        engine_state['emails_found'] += 1
+                        
+            logger.info("Finished searching all cities. Waiting for email queue to complete...")
+            while not email_queue.empty() and not stop_event.is_set():
+                time.sleep(1)
+                
+            engine_state['is_running'] = False
+            logger.info("Campaign completed naturally.")
+        except Exception as e:
+            logger.error(f"Error in bg_scraper_worker: {e}")
+            engine_state['is_running'] = False
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -223,8 +257,7 @@ def start_campaign():
         except:
             pass
         
-    sender = BulkEmailSender()
-    worker_thread = threading.Thread(target=bg_email_worker, args=(sender, 60), daemon=True)
+    worker_thread = threading.Thread(target=bg_email_worker, args=(60,), daemon=True)
     worker_thread.start()
     
     scraper_thread = threading.Thread(target=bg_scraper_worker, args=(niche,), daemon=True)
@@ -256,104 +289,137 @@ def get_logs():
     except Exception as e:
         return jsonify({"logs": [f"Error reading logs: {e}"]})
 
-# --- NEW SAAS ENDPOINTS ---
+# --- NEW SAAS ENDPOINTS (MIGRATED TO NEON POSTGRES) ---
+def get_default_user():
+    user = User.query.first()
+    if not user:
+        user = User(email="admin@saas.com", password_hash="test")
+        db.session.add(user)
+        db.session.commit()
+    return user
+
+def get_default_campaign(user_id):
+    camp = Campaign.query.filter_by(user_id=user_id).first()
+    if not camp:
+        camp = Campaign(
+            user_id=user_id, 
+            subject="Helped a {{city}} {{niche}} get more leads — here's how", 
+            plain_text="Hey {{first_name}},\n\nI recently redesigned a {{niche}} website in {{similar_city}}...",
+            template_html="<!-- Template not found -->"
+        )
+        db.session.add(camp)
+        db.session.commit()
+    return camp
 
 @app.route('/api/accounts', methods=['GET'])
 def get_accounts():
-    import json
     try:
-        if not os.path.exists('accounts.json'):
-            return jsonify([])
-        with open('accounts.json', 'r') as f:
-            return jsonify(json.load(f))
+        user = get_default_user()
+        accounts = EmailAccount.query.filter_by(user_id=user.id).all()
+        return jsonify([{"email": a.email, "app_password": a.app_password, "daily_limit": a.daily_limit, "sender_name": a.sender_name} for a in accounts])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/accounts', methods=['POST'])
 def save_accounts():
-    import json
     try:
-        accounts = request.json
-        if not isinstance(accounts, list):
+        user = get_default_user()
+        accounts_data = request.json
+        if not isinstance(accounts_data, list):
             return jsonify({"error": "Expected a list of accounts"}), 400
             
-        with open('accounts.json', 'w') as f:
-            json.dump(accounts, f, indent=4)
+        # Clear old and add new (sync logic)
+        EmailAccount.query.filter_by(user_id=user.id).delete()
+        
+        for acc in accounts_data:
+            if acc.get('email') and acc.get('app_password'):
+                new_acc = EmailAccount(
+                    user_id=user.id,
+                    email=acc.get('email'),
+                    app_password=acc.get('app_password'),
+                    daily_limit=int(acc.get('daily_limit', 150)),
+                    sender_name=acc.get('sender_name', '')
+                )
+                db.session.add(new_acc)
+        
+        db.session.commit()
         return jsonify({"success": True})
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/settings', methods=['GET'])
 def get_settings():
-    import json
     try:
-        if not os.path.exists('settings.json'):
-            # Default fallback
-            return jsonify({
-                "subject": "Helped a {{city}} {{niche}} get more leads — here's how",
-                "plain_text": "Hey {{first_name}},\n\nI recently redesigned a {{niche}} website in {{similar_city}}..."
-            })
-        with open('settings.json', 'r') as f:
-            return jsonify(json.load(f))
+        user = get_default_user()
+        camp = get_default_campaign(user.id)
+        return jsonify({
+            "subject": camp.subject,
+            "plain_text": camp.plain_text,
+            "niche": camp.niche
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/settings', methods=['POST'])
 def save_settings():
-    import json
     try:
+        user = get_default_user()
+        camp = get_default_campaign(user.id)
         settings = request.json
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f, indent=4)
+        
+        camp.subject = settings.get('subject', camp.subject)
+        camp.plain_text = settings.get('plain_text', camp.plain_text)
+        camp.niche = settings.get('niche', camp.niche)
+        # Assuming OpenAI key might be stored here originally, skipped for DB for now unless needed
+        
+        db.session.commit()
         return jsonify({"success": True})
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/template', methods=['GET'])
 def get_template():
     try:
-        if not os.path.exists('templates/email_template.html'):
-            return jsonify({"content": "<!-- Template not found -->"})
-            
-        with open('templates/email_template.html', 'r', encoding='utf-8') as f:
-            return jsonify({"content": f.read()})
+        user = get_default_user()
+        camp = get_default_campaign(user.id)
+        return jsonify({"content": camp.template_html})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
         
 @app.route('/api/template', methods=['POST'])
 def save_template():
     try:
+        user = get_default_user()
+        camp = get_default_campaign(user.id)
         data = request.json
-        content = data.get('content', '')
         
-        os.makedirs('templates', exist_ok=True)
-        with open('templates/email_template.html', 'w', encoding='utf-8') as f:
-            f.write(content)
+        camp.template_html = data.get('content', '')
+        db.session.commit()
         return jsonify({"success": True})
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/history', methods=['GET'])
 def get_history():
-    history = []
     try:
-        if os.path.exists('logs/sent_emails.txt'):
-            with open('logs/sent_emails.txt', 'r') as f:
-                for line in f.readlines():
-                    if not line.strip(): continue
-                    parts = line.strip().split(',')
-                    
-                    email = parts[0]
-                    date = parts[1] if len(parts) > 1 else 'Unknown'
-                    sender = parts[2] if len(parts) > 2 else 'Default'
-                    
-                    history.append({
-                        "email": email,
-                        "date": date,
-                        "sender": sender
-                    })
-        # Return newest first
-        return jsonify(history[::-1])
+        user = get_default_user()
+        camp = get_default_campaign(user.id)
+        
+        # Get all leads for this campaign that have been sent
+        sent_leads = Lead.query.filter(Lead.campaign_id == camp.id, Lead.sent_at != None).order_by(Lead.sent_at.desc()).limit(100).all()
+        
+        history = []
+        for lead in sent_leads:
+            history.append({
+                "email": lead.email,
+                "date": lead.sent_at.strftime('%Y-%m-%d %H:%M:%S'),
+                "sender": "Backend Engine" # We can add relations to EmailAccount later if needed
+            })
+            
+        return jsonify(history)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
