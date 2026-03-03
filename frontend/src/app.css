@@ -33,6 +33,12 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
+@media (max-width: 768px) {
+  .glass-card {
+    border-radius: 0.75rem;
+  }
+}
+
 .input-glass {
   background: rgba(15, 17, 21, 0.6) !important;
   border: 1px solid rgba(255,255,255,0.1) !important;
@@ -44,4 +50,13 @@ body {
   border-color: var(--accent) !important;
   box-shadow: 0 0 0 2px var(--accent-glow) !important;
   outline: none !important;
+}
+
+/* Hide scrollbar but keep functionality */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

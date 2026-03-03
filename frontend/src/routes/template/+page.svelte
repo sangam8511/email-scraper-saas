@@ -104,20 +104,32 @@
     }
 </script>
 
-<header class="mb-8 flex justify-between items-center">
+<header
+    class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6"
+>
     <div>
-        <h1 class="text-3xl font-bold tracking-tight mb-2">Content Studio</h1>
-        <p class="text-muted">
-            Variables: <code>&#123;&#123;first_name&#125;&#125;</code>,
-            <code>&#123;&#123;city&#125;&#125;</code>,
-            <code>&#123;&#123;niche&#125;&#125;</code>,
-            <code>&#123;&#123;sender_name&#125;&#125;</code>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-2">
+            Content Studio
+        </h1>
+        <p class="text-sm text-muted">
+            Variables: <code class="bg-white/5 px-1 rounded"
+                >&#123;&#123;first_name&#125;&#125;</code
+            >,
+            <code class="bg-white/5 px-1 rounded"
+                >&#123;&#123;city&#125;&#125;</code
+            >,
+            <code class="bg-white/5 px-1 rounded"
+                >&#123;&#123;niche&#125;&#125;</code
+            >,
+            <code class="bg-white/5 px-1 rounded"
+                >&#123;&#123;sender_name&#125;&#125;</code
+            >
         </p>
     </div>
-    <div>
+    <div class="w-full md:w-auto">
         <button
             on:click={saveAll}
-            class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-semibold px-6 py-2 rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all flex items-center gap-2"
+            class="w-full md:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-semibold px-6 py-2 rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2"
         >
             <svg
                 class="w-5 h-5"
@@ -148,17 +160,17 @@
 
 <!-- ✨ AI Magic Writer Section -->
 <div
-    class="glass-card p-6 mb-6 border-l-4 border-l-purple-500 relative overflow-hidden"
+    class="glass-card p-4 sm:p-6 mb-6 border-l-4 border-l-purple-500 relative overflow-hidden"
 >
     <div
         class="absolute -right-20 -top-20 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"
     ></div>
 
     <div
-        class="flex items-center gap-2 mb-4 text-purple-400 font-bold tracking-wide uppercase text-sm"
+        class="flex items-center gap-2 mb-4 text-purple-400 font-bold tracking-wide uppercase text-xs sm:text-sm"
     >
         <svg
-            class="w-5 h-5 text-purple-400"
+            class="w-5 h-5"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -176,14 +188,13 @@
         <div class="md:col-span-3">
             <textarea
                 bind:value={aiPrompt}
-                class="w-full input-glass rounded-lg px-4 py-3 text-sm font-medium resize-none"
+                class="w-full input-glass rounded-lg px-4 py-3 text-sm font-medium resize-none h-20 md:h-24"
                 placeholder="E.g. 'Write a short, punchy 3-line email pitching our SEO services to plumbers. Offer a free audit.'"
-                rows="2"
             ></textarea>
         </div>
         <div class="md:col-span-1">
             <label
-                class="block text-xs font-semibold text-muted mb-1 ml-1 uppercase"
+                class="block text-[10px] font-semibold text-muted mb-1 ml-1 uppercase"
                 >Gemini Free API Key</label
             >
             <input
@@ -195,7 +206,7 @@
             <button
                 on:click={generateTemplate}
                 disabled={isGenerating}
-                class="mt-2 w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 disabled:text-gray-400 text-white font-bold py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(147,51,234,0.3)]"
+                class="mt-2 w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 disabled:text-gray-400 text-white font-bold py-3 md:py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(147,51,234,0.3)] text-sm"
             >
                 {#if isGenerating}
                     <svg

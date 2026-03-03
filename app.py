@@ -95,15 +95,35 @@ def bg_email_worker(delay_seconds):
     """Takes emails from queue and sends them."""
     global engine_state
     
+    logger.info("🧵 [Background Email Worker] Starting up...")
+    
     with app.app_context():
-        user = get_default_user()
-        camp = get_default_campaign(user.id)
-        sender = BulkEmailSender(user, camp)
+        try:
+            user = get_default_user()
+            camp = get_default_campaign(user.id)
+            sender = BulkEmailSender(user, camp)
+            
+            accounts = sender.get_accounts()
+            logger.info(f"🧵 [Background Email Worker] Loaded {len(accounts)} sending accounts for campaign {camp.id}")
+            
+            if not accounts:
+                logger.warning("🧵 [Background Email Worker] No sending accounts found in DB! Worker will exit.")
+                return
+
+        except Exception as e:
+            logger.error(f"🧵 [Background Email Worker] FATAL: Initialization error: {e}")
+            return
         
         while not stop_event.is_set() or not email_queue.empty():
             try:
                 # We timeout every 2 seconds to check the stop_event
-                contact_dict = email_queue.get(timeout=2)
+                try:
+                    contact_dict = email_queue.get(timeout=2)
+                except queue.Empty:
+                    if stop_event.is_set():
+                        break
+                    continue
+
                 if contact_dict is None:
                     break
                     
@@ -114,27 +134,34 @@ def bg_email_worker(delay_seconds):
                         engine_state['emails_sent'] += 1
                         
                         # Update lead in DB
-                        from datetime import datetime
-                        lead = Lead.query.filter_by(campaign_id=camp.id, email=contact_dict['email']).first()
-                        if lead:
-                            lead.sent_at = datetime.utcnow()
-                            db.session.commit()
+                        try:
+                            from datetime import datetime
+                            lead = Lead.query.filter_by(campaign_id=camp.id, email=contact_dict['email']).first()
+                            if lead:
+                                lead.sent_at = datetime.utcnow()
+                                db.session.commit()
+                        except Exception as db_e:
+                            logger.error(f"🧵 [Background Email Worker] DB update error: {db_e}")
+                            db.session.rollback()
                             
-                        logger.info(f"Waiting {delay_seconds} seconds before grabbing the next email from queue to avoid spam filters...")
+                        logger.info(f"Waiting {delay_seconds} seconds before next email...")
                         for _ in range(delay_seconds):
                             if stop_event.is_set():
                                 break
                             time.sleep(1)
                     else:
                         engine_state['errors'] += 1
+                        logger.warning(f"🧵 [Background Email Worker] Failed to send to {contact_dict.get('email')}. Check account limits/auth.")
                 except Exception as e:
-                    logger.error(f"[Background Sender] failed on {contact_dict.get('email')}: {e}")
+                    logger.error(f"🧵 [Background Email Worker] Unexpected error on {contact_dict.get('email')}: {e}")
                     engine_state['errors'] += 1
                 finally:
                     email_queue.task_done()
-            except Exception:
-                # Empty queue timeout
-                pass
+            except Exception as outer_e:
+                logger.error(f"🧵 [Background Email Worker] Loop error: {outer_e}")
+                time.sleep(1)
+        
+        logger.info("🧵 [Background Email Worker] Shutting down.")
 
 def bg_scraper_worker(niche):
     """Iterates through cities and scrapes."""

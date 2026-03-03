@@ -80,12 +80,14 @@
     }
 </script>
 
-<header class="mb-8 flex justify-between items-center">
+<header
+    class="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+>
     <div>
-        <h1 class="text-3xl font-bold tracking-tight mb-2">
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-2">
             Campaign Overview
         </h1>
-        <p class="text-muted">
+        <p class="text-sm text-muted">
             Monitor and control your lead generation engine.
         </p>
     </div>
@@ -103,7 +105,7 @@
             ></span>
         </div>
         <span
-            class="font-bold tracking-widest text-sm {status.is_running
+            class="font-bold tracking-widest text-xs sm:text-sm {status.is_running
                 ? 'text-purple-400'
                 : 'text-gray-400'}"
         >
@@ -112,99 +114,111 @@
     </div>
 </header>
 
-<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-    <div class="glass-card p-6 border-l-4 border-l-blue-500">
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+    <div class="glass-card p-4 sm:p-6 border-l-4 border-l-blue-500">
         <h3
-            class="text-muted text-sm font-semibold uppercase tracking-wider mb-2"
+            class="text-muted text-xs font-semibold uppercase tracking-wider mb-2"
         >
             Target Niche
         </h3>
-        <p class="text-3xl font-bold">{status.current_niche || "None"}</p>
+        <p class="text-2xl sm:text-3xl font-bold truncate">
+            {status.current_niche || "None"}
+        </p>
     </div>
 
-    <div class="glass-card p-6 border-l-4 border-l-emerald-500 relative">
+    <div class="glass-card p-4 sm:p-6 border-l-4 border-l-emerald-500 relative">
         <h3
-            class="text-muted text-sm font-semibold uppercase tracking-wider mb-2"
+            class="text-muted text-xs font-semibold uppercase tracking-wider mb-2"
         >
             Verified Emails Found
         </h3>
-        <p class="text-3xl font-bold text-emerald-400">{status.emails_found}</p>
+        <p class="text-2xl sm:text-3xl font-bold text-emerald-400">
+            {status.emails_found}
+        </p>
         <p class="text-xs text-muted mt-2 truncate">
             City: {status.current_city}
         </p>
 
         {#if status.emails_skipped > 0}
-            <div class="absolute top-6 right-6 text-right">
+            <div class="absolute top-4 sm:top-6 right-4 sm:right-6 text-right">
                 <span
-                    class="text-[10px] font-semibold text-red-400 uppercase tracking-widest block mb-1"
+                    class="text-[9px] font-semibold text-red-400 uppercase tracking-widest block mb-1"
                     >Prevented Bounces</span
                 >
-                <span class="text-xl font-bold text-red-500"
+                <span class="text-lg sm:text-xl font-bold text-red-500"
                     >{status.emails_skipped}</span
                 >
             </div>
         {/if}
     </div>
 
-    <div class="glass-card p-6 border-l-4 border-l-purple-500">
+    <div class="glass-card p-4 sm:p-6 border-l-4 border-l-purple-500">
         <h3
-            class="text-muted text-sm font-semibold uppercase tracking-wider mb-2"
+            class="text-muted text-xs font-semibold uppercase tracking-wider mb-2"
         >
             Successfully Sent
         </h3>
-        <p class="text-3xl font-bold text-purple-400">{status.emails_sent}</p>
+        <p class="text-2xl sm:text-3xl font-bold text-purple-400">
+            {status.emails_sent}
+        </p>
     </div>
 
-    <div class="glass-card p-6 border-l-4 border-l-amber-500">
+    <div class="glass-card p-4 sm:p-6 border-l-4 border-l-amber-500">
         <h3
-            class="text-muted text-sm font-semibold uppercase tracking-wider mb-2"
+            class="text-muted text-xs font-semibold uppercase tracking-wider mb-2"
         >
             Queue Buffer
         </h3>
-        <p class="text-3xl font-bold text-amber-400">{status.queue_size}</p>
-        <p class="text-xs text-muted mt-2">Waiting to send securely</p>
+        <p class="text-2xl sm:text-3xl font-bold text-amber-400">
+            {status.queue_size}
+        </p>
+        <p class="text-[10px] sm:text-xs text-muted mt-2">
+            Waiting to send securely
+        </p>
     </div>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <div
-        class="glass-card p-8 lg:col-span-1 flex flex-col justify-center h-[500px]"
+        class="glass-card p-6 sm:p-8 lg:col-span-1 flex flex-col justify-center h-auto lg:h-[500px]"
     >
-        <h2 class="text-xl font-bold mb-6">Engine Controls</h2>
+        <h2 class="text-lg sm:text-xl font-bold mb-6 italic text-purple-300">
+            Engine Controls
+        </h2>
 
         <div class="mb-6">
-            <label class="block text-sm font-semibold text-muted mb-2"
+            <label class="block text-xs font-semibold text-muted mb-2 uppercase"
                 >Target Niche Keyword</label
             >
             <input
                 type="text"
                 bind:value={nicheInput}
                 disabled={status.is_running}
-                class="w-full input-glass rounded-lg px-4 py-3"
+                class="w-full input-glass rounded-lg px-4 py-3 text-sm sm:text-base"
                 placeholder="e.g. plumbers, real estate agents"
             />
         </div>
 
-        <div class="flex gap-4">
+        <div class="flex flex-col sm:flex-row gap-4">
             <button
                 on:click={startCampaign}
                 disabled={status.is_running}
-                class="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold py-3 px-4 rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                class="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold py-3 px-4 rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
             >
-                <i class="fa-solid fa-play mr-2"></i> Ignite Engine
+                Ignite Engine
             </button>
             <button
                 on:click={stopCampaign}
                 disabled={!status.is_running}
-                class="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white font-bold py-3 px-4 rounded-lg shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                class="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white font-bold py-3 px-4 rounded-lg shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
             >
-                <i class="fa-solid fa-stop mr-2"></i> Stop
+                Stop
             </button>
         </div>
     </div>
 
     <!-- Terminal -->
-    <div class="glass-card lg:col-span-2 flex flex-col h-[500px]">
+    <div class="glass-card lg:col-span-2 flex flex-col h-[400px] lg:h-[500px]">
         <div
             class="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.08)] bg-black/20"
         >
