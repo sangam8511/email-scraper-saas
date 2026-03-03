@@ -12,6 +12,7 @@ PyJWT
 Flask==3.0.0
 gunicorn==21.2.0
 openai>=1.12.0
+google-generativeai
 email-validator
 dnspython
 dnspython
