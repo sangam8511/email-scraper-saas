@@ -1,5 +1,6 @@
 <script>
     import { onMount } from "svelte";
+    import { fade, fly } from "svelte/transition";
 
     let history = [];
     let loading = true;
@@ -20,108 +21,155 @@
     onMount(() => loadHistory());
 </script>
 
-<header class="mb-8 flex justify-between items-center">
-    <div>
-        <h1 class="text-3xl font-bold tracking-tight mb-2">Sent History</h1>
-        <p class="text-muted">
-            A comprehensive log of all dispatched campaigns.
-        </p>
-    </div>
-    <button
-        on:click={loadHistory}
-        class="bg-white/5 hover:bg-white/10 border border-white/10 px-5 py-2.5 rounded-lg flex items-center gap-2 transition-colors"
+<div class="space-y-10">
+    <header
+        class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6"
     >
-        <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            ><path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            ></path></svg
+        <div>
+            <h1
+                class="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2"
+            >
+                Dispatch Logs
+            </h1>
+            <p class="text-zinc-400 font-medium">
+                Complete audit trail of all successful outreach deliveries.
+            </p>
+        </div>
+        <button
+            on:click={loadHistory}
+            class="px-5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white font-bold hover:bg-white/[0.06] transition-all flex items-center justify-center gap-2"
         >
-        Refresh Table
-    </button>
-</header>
+            <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                ><path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                ></path></svg
+            >
+            Sync Logs
+        </button>
+    </header>
 
-<div class="glass-card rounded-xl overflow-hidden shadow-2xl">
-    <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse">
-            <thead>
-                <tr
-                    class="bg-black/30 border-b border-white/5 text-xs uppercase tracking-wider text-muted font-semibold"
-                >
-                    <th class="py-4 px-6 font-medium">Recipient Target</th>
-                    <th class="py-4 px-6 font-medium">Timestamp</th>
-                    <th class="py-4 px-6 font-medium">Sender Alias</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-white/5">
-                {#if loading}
-                    <tr
-                        ><td colspan="3" class="py-8 text-center text-muted"
-                            >Fetching records...</td
-                        ></tr
-                    >
-                {:else if history.length === 0}
-                    <tr
-                        ><td colspan="3" class="py-12 text-center">
-                            <div
-                                class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/5 mb-3"
-                            >
-                                <svg
-                                    class="w-6 h-6 text-gray-500"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                    ><path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        stroke-width="2"
-                                        d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                                    ></path></svg
-                                >
-                            </div>
-                            <p class="text-muted">
-                                No emails have been sent yet.
-                            </p>
-                        </td></tr
-                    >
-                {:else}
-                    {#each history as item}
-                        <tr class="hover:bg-white/[0.02] transition-colors">
+    <div
+        class="glass-card overflow-hidden shadow-2xl border-white/5 bg-white/[0.01]"
+    >
+        <div class="overflow-x-auto no-scrollbar">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-white/[0.02] border-b border-white/5">
+                        <th
+                            class="py-5 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                            >Recipient Account</th
+                        >
+                        <th
+                            class="py-5 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                            >Delivery Hash / Type</th
+                        >
+                        <th
+                            class="py-5 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                            >Node Timestamp</th
+                        >
+                        <th
+                            class="py-5 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                            >Origin Sender</th
+                        >
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/[0.03]">
+                    {#if loading}
+                        <tr>
                             <td
-                                class="py-4 px-6 font-medium text-gray-200 flex items-center gap-3"
+                                colspan="4"
+                                class="py-20 text-center font-bold text-zinc-600 uppercase tracking-widest italic"
                             >
-                                <div
-                                    class="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold uppercase border border-blue-500/20"
-                                >
-                                    {item.email ? item.email.charAt(0) : "?"}
-                                </div>
-                                {item.email || "Unknown"}
-                            </td>
-                            <td class="py-4 px-6">
-                                <span
-                                    class="px-3 py-1 bg-white/5 rounded-md text-sm border border-white/5 text-gray-300"
-                                >
-                                    {item.date}
-                                </span>
-                            </td>
-                            <td
-                                class="py-4 px-6 text-muted text-sm flex items-center gap-2"
-                            >
-                                <span
-                                    class="w-2 h-2 rounded-full bg-emerald-500"
-                                ></span>
-                                {item.sender}
+                                Decrypting logs...
                             </td>
                         </tr>
-                    {/each}
-                {/if}
-            </tbody>
-        </table>
+                    {:else if history.length === 0}
+                        <tr>
+                            <td colspan="4" class="py-24 text-center">
+                                <div
+                                    class="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-white/[0.02] border border-white/5 mb-6 opacity-40"
+                                >
+                                    <svg
+                                        class="w-8 h-8 text-zinc-500"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        ><path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                                        /></svg
+                                    >
+                                </div>
+                                <p
+                                    class="text-zinc-500 font-bold uppercase tracking-widest text-sm"
+                                >
+                                    Quiet Terminal: No Dispatches Yet
+                                </p>
+                            </td>
+                        </tr>
+                    {:else}
+                        {#each history as item, i}
+                            <tr
+                                class="hover:bg-white/[0.02] transition-colors group"
+                            >
+                                <td class="py-5 px-8">
+                                    <div class="flex items-center gap-4">
+                                        <div
+                                            class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-500/10 to-indigo-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-black uppercase shadow-lg group-hover:scale-110 transition-transform"
+                                        >
+                                            {item.email
+                                                ? item.email.charAt(0)
+                                                : "∅"}
+                                        </div>
+                                        <div class="flex flex-col">
+                                            <span
+                                                class="text-sm font-bold text-zinc-100"
+                                                >{item.email || "System"}</span
+                                            >
+                                            <span
+                                                class="text-[10px] font-bold text-zinc-600 uppercase tracking-widest"
+                                                >External Lead</span
+                                            >
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="py-5 px-8">
+                                    <span
+                                        class="px-3 py-1 bg-emerald-500/5 text-emerald-400 text-[10px] font-black rounded-lg border border-emerald-500/10 uppercase tracking-widest"
+                                    >
+                                        Delivered
+                                    </span>
+                                </td>
+                                <td
+                                    class="py-5 px-8 text-xs font-mono text-zinc-500"
+                                >
+                                    {item.date}
+                                </td>
+                                <td class="py-5 px-8">
+                                    <div class="flex items-center gap-2.5">
+                                        <div
+                                            class="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.4)]"
+                                        ></div>
+                                        <span
+                                            class="text-sm font-bold text-zinc-300"
+                                            >{item.sender}</span
+                                        >
+                                    </div>
+                                </td>
+                            </tr>
+                        {/each}
+                    {/if}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>

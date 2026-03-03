@@ -42,35 +42,159 @@
 	}
 </script>
 
-<div class="flex h-screen overflow-hidden bg-dark text-white font-sans">
-	<!-- Mobile Header -->
-	<div
-		class="lg:hidden fixed top-0 left-0 right-0 h-16 glass-card rounded-none border-x-0 border-t-0 z-50 flex items-center justify-between px-6"
-	>
-		<h2
-			class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-400"
-		>
-			LeadEngine
-		</h2>
-		<button
+<div class="flex h-screen overflow-hidden bg-dark selection:bg-purple-500/30">
+	<!-- Sidebar Overlay (Mobile) -->
+	{#if isSidebarOpen}
+		<div
+			class="lg:hidden fixed inset-0 bg-black/80 backdrop-blur-md z-40 opacity-100 transition-all duration-500"
 			on:click={toggleSidebar}
-			class="p-2 text-muted hover:text-white transition-colors"
+		></div>
+	{/if}
+
+	<!-- Floating Sidebar Container -->
+	<aside
+		class="
+		fixed lg:static inset-y-0 left-0 w-72 p-4 z-50 flex flex-col transform transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]
+		{isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+	"
+	>
+		<div
+			class="h-full glass-card flex flex-col border-white/10 shadow-purple-500/5"
 		>
-			{#if isSidebarOpen}
-				<svg
-					class="w-6 h-6"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
+			<div class="px-8 py-10">
+				<div class="flex items-center gap-3">
+					<div
+						class="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-purple-500/20"
+					>
+						<svg
+							class="w-6 h-6 text-white"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2.5"
+								d="M13 10V3L4 14h7v7l9-11h-7z"
+							/>
+						</svg>
+					</div>
+					<div>
+						<h2
+							class="text-xl font-bold tracking-tight text-white leading-none"
+						>
+							LeadEngine
+						</h2>
+						<div
+							class="text-[10px] font-bold text-muted mt-1 uppercase tracking-[0.2em] opacity-60"
+						>
+							SaaS Portal
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<nav class="flex-1 px-4 space-y-1.5 overflow-y-auto no-scrollbar">
+				{#each navItems as item}
+					<a
+						href={item.path}
+						class="flex items-center gap-3.5 px-5 py-3.5 rounded-2xl transition-all duration-300 group relative
+						{$page.url.pathname === item.path
+							? 'bg-purple-500/10 text-white border border-purple-500/20 shadow-lg shadow-purple-500/5'
+							: 'text-zinc-400 hover:text-white hover:bg-white/[0.03] border border-transparent'}"
+					>
+						{#if $page.url.pathname === item.path}
+							<div
+								class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-purple-500 rounded-r-full"
+							></div>
+						{/if}
+						<svg
+							class="w-5 h-5 transition-transform duration-300 group-hover:scale-110
+							{$page.url.pathname === item.path
+								? 'text-purple-400'
+								: 'text-zinc-500 group-hover:text-zinc-300'}"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d={item.icon}
+							/>
+						</svg>
+						<span class="font-medium tracking-wide text-sm"
+							>{item.label}</span
+						>
+					</a>
+				{/each}
+			</nav>
+
+			<div class="p-6">
+				<div
+					class="p-4 rounded-3xl bg-white/[0.02] border border-white/[0.05] flex items-center gap-4 group cursor-pointer hover:bg-white/[0.04] transition-all"
 				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M6 18L18 6M6 6l12 12"
-					/>
-				</svg>
-			{:else}
+					<div class="relative">
+						<div
+							class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-lg shadow-lg"
+						>
+							S
+						</div>
+						<div
+							class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-[#121216] shadow-sm"
+						></div>
+					</div>
+					<div class="flex-1 overflow-hidden">
+						<div
+							class="text-sm font-bold text-zinc-100 truncate text-left"
+						>
+							Sangam P.
+						</div>
+						<div
+							class="text-[10px] font-bold text-emerald-400 flex items-center gap-1 uppercase tracking-wider"
+						>
+							Pro Membership
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</aside>
+
+	<!-- Main Content Area -->
+	<div class="flex-1 flex flex-col min-w-0">
+		<!-- Top Bar (Mobile Only Header) -->
+		<header
+			class="lg:hidden h-20 px-6 flex items-center justify-between z-30 bg-dark/50 backdrop-blur-xl border-b border-white/5"
+		>
+			<div class="flex items-center gap-3">
+				<div
+					class="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-500 to-cyan-500 flex items-center justify-center"
+				>
+					<svg
+						class="w-5 h-5 text-white"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2.5"
+							d="M13 10V3L4 14h7v7l9-11h-7z"
+						/>
+					</svg>
+				</div>
+				<h2 class="text-lg font-bold tracking-tight text-white">
+					LeadEngine
+				</h2>
+			</div>
+			<button
+				on:click={toggleSidebar}
+				class="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white active:scale-95 transition-all"
+			>
 				<svg
 					class="w-6 h-6"
 					fill="none"
@@ -84,92 +208,23 @@
 						d="M4 6h16M4 12h16m-7 6h7"
 					/>
 				</svg>
-			{/if}
-		</button>
-	</div>
+			</button>
+		</header>
 
-	<!-- Sidebar Overlay (Mobile) -->
-	{#if isSidebarOpen}
-		<div
-			class="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-30 opacity-100 transition-opacity"
-			on:click={toggleSidebar}
-		></div>
-	{/if}
-
-	<!-- Sidebar -->
-	<aside
-		class="
-		fixed lg:static inset-y-0 left-0 w-64 glass-card rounded-none border-y-0 border-l-0 border-r flex flex-col z-40 shrink-0 transform transition-transform duration-300 ease-in-out
-		{isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-	"
-	>
-		<div class="px-6 py-8 hidden lg:block">
-			<h2
-				class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-400"
-			>
-				LeadEngine
-			</h2>
-			<div class="text-xs text-muted mt-1 tracking-wider uppercase">
-				SaaS Portal
-			</div>
-		</div>
-
-		<nav
-			class="flex-1 px-4 space-y-2 mt-20 lg:mt-4 overflow-y-auto no-scrollbar"
+		<main
+			class="flex-1 relative overflow-y-auto overflow-x-hidden p-6 sm:p-10 lg:p-12"
 		>
-			{#each navItems as item}
-				<a
-					href={item.path}
-					class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group {$page
-						.url.pathname === item.path
-						? 'bg-purple-600/20 text-white shadow-[inset_0_0_0_1px_rgba(107,70,193,0.5)]'
-						: 'text-gray-400 hover:text-white hover:bg-white/5'}"
-				>
-					<svg
-						class="w-5 h-5
-						{$page.url.pathname === item.path
-							? 'text-purple-400'
-							: 'text-gray-500 group-hover:text-gray-300'}"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d={item.icon}
-						/>
-					</svg>
-					<span class="font-medium">{item.label}</span>
-				</a>
-			{/each}
-		</nav>
+			<!-- Animated background blobs -->
+			<div
+				class="fixed top-0 right-0 -z-10 w-[500px] h-[500px] bg-purple-500/10 blur-[120px] rounded-full translate-x-1/2 -translate-y-1/2"
+			></div>
+			<div
+				class="fixed bottom-0 left-0 -z-10 w-[400px] h-[400px] bg-cyan-500/5 blur-[100px] rounded-full -translate-x-1/2 translate-y-1/2"
+			></div>
 
-		<div class="p-4 border-t border-[rgba(255,255,255,0.08)]">
-			<div class="flex items-center gap-3 px-2">
-				<div
-					class="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-blue-600 flex items-center justify-center font-bold shadow-lg"
-				>
-					U
-				</div>
-				<div class="flex-1 overflow-hidden">
-					<div class="text-sm font-semibold truncate">SaaS User</div>
-					<div class="text-xs text-green-400 flex items-center gap-1">
-						<span class="w-2 h-2 rounded-full bg-green-400"></span> Pro
-						Plan
-					</div>
-				</div>
+			<div class="max-w-6xl mx-auto pb-20">
+				<slot />
 			</div>
-		</div>
-	</aside>
-
-	<!-- Main Content Area -->
-	<main
-		class="flex-1 relative overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 z-10 pt-20 lg:pt-8"
-	>
-		<div class="max-w-6xl mx-auto">
-			<slot />
-		</div>
-	</main>
+		</main>
+	</div>
 </div>
