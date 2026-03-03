@@ -1,6 +1,6 @@
 import os
+import queue
 import threading
-from queue import Queue
 import time
 import logging
 from flask import Flask, jsonify, request, send_from_directory
@@ -60,7 +60,7 @@ engine_state = {
 
 # Thread control
 stop_event = threading.Event()
-email_queue = Queue()
+email_queue = queue.Queue()
 worker_thread = None
 scraper_thread = None
 
