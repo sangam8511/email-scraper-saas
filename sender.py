@@ -5,33 +5,93 @@ import pandas as pd
 import os
 import time
 import logging
-from jinja2 import Environment, FileSystemLoader
+from datetime import datetime
+from jinja2 import Environment, FileSystemLoader, Template
 from dotenv import load_dotenv
+import json
 
 # Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("logs/send_log.txt"),
-        logging.StreamHandler()
-    ]
-)
+# basicConfig is handled by app.py to ensure file routing
 logger = logging.getLogger(__name__)
 
 class BulkEmailSender:
     def __init__(self):
         load_dotenv()
-        self.smtp_host = os.getenv('SMTP_HOST')
+        
+        # Load multiple accounts if available
+        self.accounts = []
+        if os.path.exists('accounts.json'):
+            try:
+                import json
+                with open('accounts.json', 'r') as f:
+                    self.accounts = json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading accounts.json: {e}")
+                
+        # Fallback to .env if accounts.json is missing or invalid
+        if not self.accounts:
+            self.accounts = [{
+                'email': os.getenv('SMTP_USER'),
+                'app_password': os.getenv('SMTP_PASS'),
+                'sender_name': os.getenv('SENDER_NAME', 'Default Sender'),
+                'daily_limit': 150
+            }]
+            
+        self.smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com')
         self.smtp_port = int(os.getenv('SMTP_PORT', 587))
-        self.smtp_user = os.getenv('SMTP_USER')
-        self.smtp_pass = os.getenv('SMTP_PASS')
-        self.sender_name = os.getenv('SENDER_NAME', 'Default Sender')
-        self.sender_email = os.getenv('SENDER_EMAIL', self.smtp_user)
         
         # Setup Jinja2 environment
         self.env = Environment(loader=FileSystemLoader('templates'))
         self.template = self.env.get_template('email_template.html')
+        
+        # Load settings
+        self.settings = {
+            "subject": "Hello {{first_name}} in {{city}}",
+            "plain_text": "Hey {{first_name}},\n\nHope things are well in {{city}}.\n\nBest,\n{{sender_name}}"
+        }
+        if os.path.exists('settings.json'):
+            try:
+                with open('settings.json', 'r') as f:
+                    loaded = json.load(f)
+                    self.settings.update(loaded)
+            except Exception as e:
+                logger.error(f"Error loading settings.json: {e}")
+
+    def get_emails_sent_today_by_account(self, account_email):
+        """Count how many emails a specific account sent today."""
+        count = 0
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        try:
+            if os.path.exists('logs/sent_emails.txt'):
+                with open('logs/sent_emails.txt', 'r') as f:
+                    for line in f:
+                        parts = line.strip().split(',')
+                        # Format: recipient@email.com, 2023-10-01, sender@gmail.com
+                        if len(parts) >= 3:
+                            if parts[1].strip() == today_str and parts[2].strip().lower() == account_email.lower():
+                                count += 1
+                        # Backwards compatibility check
+                        elif len(parts) == 2 and parts[1].strip() == today_str:
+                            # We don't know who sent it, assume it was the main account
+                            if account_email.lower() == self.accounts[0].get('email', '').strip().lower():
+                                count += 1
+        except Exception as e:
+            logger.error(f"Could not load sent emails log: {e}")
+        return count
+
+    def get_available_account(self):
+        """Find the first account that hasn't hit its daily limit."""
+        for account in self.accounts:
+            sender_email = account.get('email', '').strip()
+            daily_limit = int(account.get('daily_limit', 150))
+            
+            if not sender_email or not account.get('app_password'):
+                continue
+                
+            sent_today = self.get_emails_sent_today_by_account(sender_email)
+            if sent_today < daily_limit:
+                return account, sent_today
+        return None, 0
 
     def load_recipients(self, csv_path='recipients/contacts.csv'):
         try:
@@ -51,7 +111,7 @@ class BulkEmailSender:
             # Basic validation
             if 'email' not in df.columns:
                 logger.error(f"No 'email' column found in {csv_path}. Columns: {df.columns.tolist()}")
-                return []
+                return [], 0
                 
             df = df.dropna(subset=['email'])
             
@@ -61,12 +121,30 @@ class BulkEmailSender:
             df = df.explode('email')
             df['email'] = df['email'].str.strip()
             
-            # 2) Filter against already sent emails
+            # Basic email regex validation
+            valid_emails = df[df['email'].str.contains(r'^[\w\.-]+@[\w\.-]+\.\w+$', na=False, regex=True)]
+            
+            # Fill NaN values for other columns with empty strings
+            valid_emails = valid_emails.fillna('')
+            
+            # 2) Filter against already sent emails and count today's volume
             sent_emails = set()
+            emails_sent_today = 0
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            
             try:
                 if os.path.exists('logs/sent_emails.txt'):
                     with open('logs/sent_emails.txt', 'r') as f:
-                        sent_emails = set(line.strip().lower() for line in f if line.strip())
+                        for line in f:
+                            if not line.strip(): continue
+                            
+                            # Format: email@example.com (or email@example.com,2023-10-01)
+                            parts = line.strip().split(',')
+                            saved_email = parts[0].strip().lower()
+                            sent_emails.add(saved_email)
+                            
+                            if len(parts) > 1 and parts[1].strip() == today_str:
+                                emails_sent_today += 1
             except Exception as e:
                 logger.error(f"Could not load sent emails log: {e}")
 
@@ -77,35 +155,61 @@ class BulkEmailSender:
             valid_emails = valid_emails.drop_duplicates(subset=['email'])
 
             logger.info(f"Loaded {len(valid_emails)} NEW valid recipients from {csv_path} (Skipped previous/invalid ones).")
-            return valid_emails.to_dict('records')
+            return valid_emails.to_dict('records'), emails_sent_today
         except Exception as e:
-            logger.error(f"Error loading recipients: {e}")
-            return []
+            logger.error(f"Error loading recipients from {csv_path}: {e}")
+            return [], 0
 
     def send_emails(self, recipients, delay_seconds=15):
         if not recipients:
             logger.warning("No recipients to send to.")
             return
+
+        for i, recipient in enumerate(recipients):
+            # Select an available account right before sending
+            active_account, sent_so_far = self.get_available_account()
+            if not active_account:
+                logger.error("🚫 All connected accounts have reached their daily sending limits. Stopping.")
+                return
+
+            smtp_user = active_account['email']
+            smtp_pass = active_account['app_password']
+            sender_name = active_account.get('sender_name', 'Real Estate Expert')
+            sender_email = smtp_user
+
+            email_address = recipient.get('email')
             
-        if not self.smtp_host or not self.smtp_user or not self.smtp_pass:
-            logger.error("SMTP credentials are not fully configured in .env file.")
-            return
+            try:
+                # Disconnect and Reconnect per-email ensures we can safely rotate accounts dynamically
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_user, smtp_pass)
 
-        try:
-            logger.info(f"Connecting to SMTP server {self.smtp_host}:{self.smtp_port}...")
-            server = smtplib.SMTP(self.smtp_host, self.smtp_port)
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(self.smtp_user, self.smtp_pass)
-            logger.info("Successfully connected and authenticated.")
-
-            for i, recipient in enumerate(recipients):
-                # 2) Parse the full name to just get the first name (e.g. "KALEO Real Estate Company" -> "KALEO")
-                raw_name = str(recipient.get('first_name', recipient.get('name_full', 'there')))
-                first_name = raw_name.split()[0] if raw_name.strip() and raw_name.lower() != 'nan' else 'there'
+                # 2) Parse the full name to just get the first name
+                raw_name = str(recipient.get('first_name', recipient.get('name_full', ''))).strip()
+                email_target = email_address.lower()
                 
-                email_address = recipient.get('email')
+                first_name = "there" # Default fallback
+                
+                # Check if raw_name looks like a person's name (less than 3 words usually)
+                if raw_name and raw_name.lower() != 'nan':
+                    words = raw_name.split()
+                    if len(words) <= 3 and "llc" not in raw_name.lower() and "inc" not in raw_name.lower():
+                        first_name = words[0].capitalize()
+                
+                # If we still have fallback but the email format is name@..., let's guess the name
+                if first_name == "there" and "@" in email_target:
+                    local_part = email_target.split("@")[0]
+                    # Common non-person emails
+                    if local_part in ["info", "contact", "support", "sales", "hello", "admin", "office"]:
+                        first_name = "team"
+                    else:
+                        # try to get name from something like john.doe or john
+                        potential_name = local_part.split(".")[0].split("_")[0]
+                        if len(potential_name) > 2 and not any(char.isdigit() for char in potential_name):
+                            first_name = potential_name.capitalize()
                 
                 # Default "city" parsing improvement
                 raw_city = str(recipient.get('city', ''))
@@ -113,58 +217,59 @@ class BulkEmailSender:
                     addr = str(recipient.get('address', ''))
                     if addr.lower() != 'nan' and ',' in addr:
                         parts = [p.strip() for p in addr.split(',')]
-                        # Address usually like: "1898 320 Rd, Beloit, KS 67420"
                         if len(parts) >= 2:
-                            # The city is usually the part before the State/Zip part
-                            # So in [1898 320 Rd, Beloit, KS 67420], parts[-2] is 'Beloit'
                             raw_city = parts[-2]
-                            
-                            # Just in case they provide "City, Country"
                             if len(parts) == 2:
                                 raw_city = parts[0]
 
                 city = raw_city if raw_city and raw_city.lower() != 'nan' else 'your area'
                 
-                # Since we don't have "similar_city" in the map extract, just use their city
                 similar_city = str(recipient.get('similar_city', city))
                 if similar_city.lower() == 'nan' or not similar_city.strip(): similar_city = city
 
                 # Create message
                 msg = MIMEMultipart('alternative')
-                msg['Subject'] = f"Helped a {city} realtor get more leads — here's how"
-                msg['From'] = f"{self.sender_name} <{self.sender_email}>"
-                msg['To'] = email_address
                 
-                # Setup Unsubscribe Link
-                unsubscribe_link = "https://example.com/unsubscribe?email=" + email_address
+                # Context for Jinja2 rendering
+                try:
+                    # If niche isn't passed directly into the recipient level, we try loading it from engine state or default
+                    # For now, let's inject a generic placeholder if missing, or use a global we can pass in later
+                    niche = str(recipient.get('niche', 'local businesses'))
+                except:
+                    niche = "local businesses"
+                    
+                context = {
+                    "first_name": first_name,
+                    "city": city,
+                    "similar_city": similar_city,
+                    "unsubscribe_link": "https://example.com/unsubscribe?email=" + email_address,
+                    "sender_name": sender_name,
+                    "niche": niche
+                }
+                
+                # Render dynamic subject
+                try:
+                    subject_template = Template(self.settings.get("subject", "Message for {{first_name}}"))
+                    rendered_subject = subject_template.render(**context)
+                except Exception as e:
+                    logger.error(f"Error rendering subject: {e}")
+                    rendered_subject = f"Hello {first_name}"
+                
+                msg['Subject'] = rendered_subject
+                msg['From'] = f"{sender_name} <{sender_email}>"
+                msg['To'] = email_address
 
                 try:
                     # Render HTML template
-                    html_content = self.template.render(
-                        first_name=first_name,
-                        city=city,
-                        similar_city=similar_city,
-                        unsubscribe_link=unsubscribe_link,
-                        sender_name=self.sender_name
-                    )
+                    html_content = self.template.render(**context)
 
-                    # Plain text fallback
-                    text_content = f"""Hey {first_name},
-
-I recently redesigned a real estate agent's website in {similar_city} — they went from getting 2-3 contact form submissions a month to 15+.
-
-The changes were simple: faster load time, lead form on the homepage, mobile optimization, and a clear call-to-action.
-
-I specialize in exactly this for US real estate agents.
-
-I'd love to show you what your website could look like — free homepage mockup, no payment until you approve it.
-
-Can I send it over?
-
-{self.sender_name}
-
----
-Unsubscribe: {unsubscribe_link}"""
+                    # Render Plain Text fallback
+                    try:
+                        text_template = Template(self.settings.get("plain_text", "Hello.\nUnsubscribe: {{unsubscribe_link}}"))
+                        text_content = text_template.render(**context)
+                    except Exception as e:
+                        logger.error(f"Error rendering plain text: {e}")
+                        text_content = f"Hello {first_name}.\n\nUnsubscribe: {context['unsubscribe_link']}"
 
                     part1 = MIMEText(text_content, 'plain')
                     part2 = MIMEText(html_content, 'html')
@@ -173,28 +278,31 @@ Unsubscribe: {unsubscribe_link}"""
                     msg.attach(part2)
 
                     server.send_message(msg)
-                    logger.info(f"SUCCESS: Sent to {email_address}")
+                    logger.info(f"SUCCESS: Sent to {email_address} [via {sender_email}]")
                     
-                    # Record it in the sent list so we never send to it again
+                    # Record it in the sent list with today's date and the sender account
                     try:
+                        today_str = datetime.now().strftime('%Y-%m-%d')
                         with open('logs/sent_emails.txt', 'a') as f:
-                            f.write(email_address + '\n')
+                            f.write(f"{email_address},{today_str},{sender_email}\n")
                     except Exception as e:
                         logger.error(f"Failed to write to sent_emails.txt: {e}")
                         
                 except Exception as e:
                     logger.error(f"FAILED: Could not send to {email_address}. Error: {e}")
 
+                server.quit()
+                
                 # Rate limiting (don't delay after the last email)
                 if i < len(recipients) - 1:
                     logger.info(f"Waiting {delay_seconds} seconds before sending the next email to avoid spam filters...")
                     time.sleep(delay_seconds)
 
-            server.quit()
-        except smtplib.SMTPAuthenticationError:
-            logger.error("SMTP Authentication Error. Check your username and password.")
-        except Exception as e:
-            logger.error(f"SMTP Connection Error: {e}")
+            except smtplib.SMTPAuthenticationError:
+                logger.error(f"SMTP Authentication Error for account {smtp_user}. Check your username and password or App Password settings.")
+                # We do not sleep here, so it will instantly fail and try the next recipient (or account if we make it smarter later).
+            except Exception as e:
+                logger.error(f"SMTP Connection Error: {e}")
 
 if __name__ == "__main__":
     sender = BulkEmailSender()

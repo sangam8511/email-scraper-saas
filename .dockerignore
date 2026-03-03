@@ -1,0 +1,10 @@
+.git
+__pycache__
+*.pyc
+logs/
+recipients/
+frontend/node_modules/
+frontend/.svelte-kit/
+.env
+settings.json
+accounts.json

@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: email-scraper-engine
+    env: docker
+    plan: starter
+    healthCheckPath: /api/status
+    envVars:
+      - key: PORT
+        value: 5001
+    disk:
+      name: persistent-storage
+      mountPath: /app/data
+      sizeGB: 1

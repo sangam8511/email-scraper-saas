@@ -1,0 +1,11 @@
+venv/
+.env
+__pycache__/
+*.pyc
+logs/
+recipients/
+accounts.json
+settings.json
+frontend/node_modules/
+frontend/.svelte-kit/
+.DS_Store
